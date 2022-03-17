@@ -52,8 +52,8 @@ use Doctrine\DBAL\Statement;
 use OC\DB\QueryBuilder\QueryBuilder;
 use OC\SystemConfig;
 use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\ILogger;
 use OCP\PreConditionNotMetException;
+use Psr\Log\LoggerInterface;
 
 class Connection extends \Doctrine\DBAL\Connection {
 	/** @var string */
@@ -65,8 +65,7 @@ class Connection extends \Doctrine\DBAL\Connection {
 	/** @var SystemConfig */
 	private $systemConfig;
 
-	/** @var ILogger */
-	private $logger;
+	private LoggerInterface $logger;
 
 	protected $lockedTable = null;
 
@@ -75,6 +74,34 @@ class Connection extends \Doctrine\DBAL\Connection {
 
 	/** @var int */
 	protected $queriesExecuted = 0;
+
+	/**
+	 * Initializes a new instance of the Connection class.
+	 *
+	 * @throws \Exception
+	 */
+	public function __construct(
+		array $params,
+		Driver $driver,
+		?Configuration $config = null,
+		?EventManager $eventManager = null
+	) {
+		if (!isset($params['adapter'])) {
+			throw new \Exception('adapter not set');
+		}
+		if (!isset($params['tablePrefix'])) {
+			throw new \Exception('tablePrefix not set');
+		}
+		/**
+		 * @psalm-suppress InternalMethod
+		 */
+		parent::__construct($params, $driver, $config, $eventManager);
+		$this->adapter = new $params['adapter']($this);
+		$this->tablePrefix = $params['tablePrefix'];
+
+		$this->systemConfig = \OC::$server->getSystemConfig();
+		$this->logger = \OC::$server->get(LoggerInterface::class);
+	}
 
 	/**
 	 * @throws Exception
@@ -125,7 +152,7 @@ class Connection extends \Doctrine\DBAL\Connection {
 	 */
 	public function createQueryBuilder() {
 		$backtrace = $this->getCallerBacktrace();
-		\OC::$server->getLogger()->debug('Doctrine QueryBuilder retrieved in {backtrace}', ['app' => 'core', 'backtrace' => $backtrace]);
+		$this->logger->debug('Doctrine QueryBuilder retrieved in {backtrace}', ['app' => 'core', 'backtrace' => $backtrace]);
 		$this->queriesBuilt++;
 		return parent::createQueryBuilder();
 	}
@@ -138,7 +165,7 @@ class Connection extends \Doctrine\DBAL\Connection {
 	 */
 	public function getExpressionBuilder() {
 		$backtrace = $this->getCallerBacktrace();
-		\OC::$server->getLogger()->debug('Doctrine ExpressionBuilder retrieved in {backtrace}', ['app' => 'core', 'backtrace' => $backtrace]);
+		$this->logger->debug('Doctrine ExpressionBuilder retrieved in {backtrace}', ['app' => 'core', 'backtrace' => $backtrace]);
 		$this->queriesBuilt++;
 		return parent::getExpressionBuilder();
 	}
@@ -165,34 +192,6 @@ class Connection extends \Doctrine\DBAL\Connection {
 	 */
 	public function getPrefix() {
 		return $this->tablePrefix;
-	}
-
-	/**
-	 * Initializes a new instance of the Connection class.
-	 *
-	 * @param array $params  The connection parameters.
-	 * @param \Doctrine\DBAL\Driver $driver
-	 * @param \Doctrine\DBAL\Configuration $config
-	 * @param \Doctrine\Common\EventManager $eventManager
-	 * @throws \Exception
-	 */
-	public function __construct(array $params, Driver $driver, Configuration $config = null,
-		EventManager $eventManager = null) {
-		if (!isset($params['adapter'])) {
-			throw new \Exception('adapter not set');
-		}
-		if (!isset($params['tablePrefix'])) {
-			throw new \Exception('tablePrefix not set');
-		}
-		/**
-		 * @psalm-suppress InternalMethod
-		 */
-		parent::__construct($params, $driver, $config, $eventManager);
-		$this->adapter = new $params['adapter']($this);
-		$this->tablePrefix = $params['tablePrefix'];
-
-		$this->systemConfig = \OC::$server->getSystemConfig();
-		$this->logger = \OC::$server->getLogger();
 	}
 
 	/**
